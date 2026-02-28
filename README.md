@@ -14,4 +14,4 @@
 
 ### 方法2
 
-直接打开：https://qianqiuzy-1313476938.cos.ap-shanghai.myqcloud.com/sbhzmlive.user.js
+直接打开：https://qianqiuzy-1313476938.cos.ap-shanghai.myqcloud.com/sbhzm.user.js
