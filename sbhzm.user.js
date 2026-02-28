@@ -1,7 +1,11 @@
 // ==UserScript==
 // @name         灰泽满烂梗搜索面板
+// @author       QianQiuZy
+// @downloadURL  https://qianqiuzy-1313476938.cos.ap-shanghai.myqcloud.com/sbhzmlive.user.js
+// @updateURL    https://qianqiuzy-1313476938.cos.ap-shanghai.myqcloud.com/sbhzmlive.user.js
 // @namespace    https://github.com/QianQiuZy/sbhzm_Tampermonkey
-// @version      1.0.0
+// @version      1.0.1
+// @license      MIT
 // @description  在B站直播间弹幕输入框上方增加烂梗搜索（关键词/Tag/随机切换），点击结果一键复制；支持拖拽定位与随机再来一条
 // @match        https://live.bilibili.com/1713546334*
 // @run-at       document-idle
@@ -96,71 +100,6 @@
     }
   }
 
-    function findDanmuInputEl() {
-        // 以你已确认的容器为锚点
-        const box = document.querySelector(".chat-input.border-box");
-        if (box) {
-            const el =
-                  box.querySelector("textarea") ||
-                  box.querySelector('input[type="text"]') ||
-                  box.querySelector('[contenteditable="true"]');
-            if (el) return el;
-        }
-
-        // 兜底：避免B站改版导致锚点失效
-        return (
-            document.querySelector(".chat-input.border-box textarea") ||
-            document.querySelector('textarea[placeholder*="弹幕"]') ||
-            document.querySelector('[contenteditable="true"][data-placeholder*="弹幕"]') ||
-            document.querySelector('[contenteditable="true"]')
-        );
-    }
-
-    function setDanmuText(text) {
-        const el = findDanmuInputEl();
-        if (!el) {
-            toast("未找到弹幕输入框 ❌");
-            return false;
-        }
-
-        // textarea / input
-        if ("value" in el) {
-            el.focus();
-            el.value = text;
-
-            // 触发框架监听（React/Vue通常靠input事件）
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-
-            // 光标置尾
-            try {
-                el.setSelectionRange(text.length, text.length);
-            } catch (_) {}
-            return true;
-        }
-
-  // contenteditable
-  if (el.isContentEditable) {
-    el.focus();
-    el.textContent = text;
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-
-    // 光标置尾
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } catch (_) {}
-    return true;
-  }
-
-  toast("输入框类型不支持 ❌");
-  return false;
-}
-
   function clamp(n, min, max) {
     return Math.min(Math.max(n, min), max);
   }
@@ -177,6 +116,63 @@
   }
 
   // -------------------------
+  // 写入弹幕输入框（你已验证OK，这里集成在完整脚本里）
+  // -------------------------
+  function findDanmuInputEl() {
+    const box = document.querySelector(".chat-input.border-box");
+    if (box) {
+      const el =
+        box.querySelector("textarea") ||
+        box.querySelector('input[type="text"]') ||
+        box.querySelector('[contenteditable="true"]');
+      if (el) return el;
+    }
+    return (
+      document.querySelector(".chat-input.border-box textarea") ||
+      document.querySelector('textarea[placeholder*="弹幕"]') ||
+      document.querySelector('[contenteditable="true"][data-placeholder*="弹幕"]') ||
+      document.querySelector('[contenteditable="true"]')
+    );
+  }
+
+  function setDanmuText(text) {
+    const el = findDanmuInputEl();
+    if (!el) {
+      toast("未找到弹幕输入框 ❌");
+      return false;
+    }
+
+    if ("value" in el) {
+      el.focus();
+      el.value = text;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      try {
+        el.setSelectionRange(text.length, text.length);
+      } catch (_) {}
+      return true;
+    }
+
+    if (el.isContentEditable) {
+      el.focus();
+      el.textContent = text;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (_) {}
+      return true;
+    }
+
+    toast("输入框类型不支持 ❌");
+    return false;
+  }
+
+  // -------------------------
   // Styles
   // -------------------------
   GM_addStyle(`
@@ -184,7 +180,6 @@
       position: fixed;
       z-index: 2147483647;
       box-sizing: border-box;
-
       padding: 10px;
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 10px;
@@ -193,7 +188,6 @@
       color: rgba(255,255,255,0.92);
       font-size: 12px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-
       pointer-events: auto;
     }
 
@@ -202,7 +196,6 @@
       align-items:center;
       justify-content:space-between;
       gap:8px;
-
       margin: -6px -6px 8px -6px;
       padding: 6px 8px;
       border-radius: 8px;
@@ -301,10 +294,6 @@
     tags: [],
     loading: false,
     lastError: "",
-
-    // random
-    allTotal: 0,
-    allTotalFetchedAt: 0, // ms
   };
 
   // -------------------------
@@ -345,10 +334,6 @@
         <button type="button" class="hzm-meme-btn" id="hzm-meme-search-btn-tag">按Tag搜索</button>
       </div>
 
-      <div class="hzm-meme-row" id="hzm-meme-row-random" style="display:none;">
-        <button type="button" class="hzm-meme-btn" id="hzm-meme-random-again">再来一条</button>
-      </div>
-
       <div class="hzm-meme-row">
         <div class="hzm-meme-meta" id="hzm-meme-status">就绪</div>
       </div>
@@ -360,6 +345,8 @@
         <div class="hzm-meme-row" style="gap:6px;">
           <button type="button" class="hzm-meme-btn" id="hzm-meme-prev">上一页</button>
           <button type="button" class="hzm-meme-btn" id="hzm-meme-next">下一页</button>
+          <!-- 随机模式：替代上一页/下一页的位置 -->
+          <button type="button" class="hzm-meme-btn" id="hzm-meme-random-again" style="display:none;">再来一条</button>
         </div>
       </div>
     `;
@@ -370,27 +357,35 @@
     const statusEl = panel.querySelector("#hzm-meme-status");
     const resultsEl = panel.querySelector("#hzm-meme-results");
     const pageInfoEl = panel.querySelector("#hzm-meme-pageinfo");
+
     const prevBtn = panel.querySelector("#hzm-meme-prev");
     const nextBtn = panel.querySelector("#hzm-meme-next");
+    const randomAgainBtn = panel.querySelector("#hzm-meme-random-again");
 
+    // status
     if (state.loading) statusEl.textContent = "请求中...";
     else if (state.lastError) statusEl.textContent = `错误：${state.lastError}`;
-    else {
-      if (state.mode === "random") statusEl.textContent = `随机模式 | total=${state.allTotal || state.total || 0}`;
-      else statusEl.textContent = `总数 ${state.total} | 当前页 ${state.page} | 条数 ${state.items.length} | page_size=${PAGE_SIZE}`;
-    }
+    else statusEl.textContent = state.mode === "random" ? "随机模式" : `总数 ${state.total} | 当前页 ${state.page} | 条数 ${state.items.length}`;
 
+    // footer controls visibility
     if (state.mode === "random") {
-      pageInfoEl.textContent = `随机模式（每次随机从 total 中抽取）`;
-      prevBtn.disabled = true;
-      nextBtn.disabled = true;
+      pageInfoEl.textContent = "随机模式";
+      prevBtn.style.display = "none";
+      nextBtn.style.display = "none";
+      randomAgainBtn.style.display = "";
+      randomAgainBtn.disabled = state.loading;
     } else {
       pageInfoEl.textContent = `第 ${state.page} 页（每页 ${PAGE_SIZE}） 总计 ${state.total}`;
+      prevBtn.style.display = "";
+      nextBtn.style.display = "";
+      randomAgainBtn.style.display = "none";
+
       prevBtn.disabled = state.loading || state.page <= 1;
       const maxPage = state.total ? Math.ceil(state.total / PAGE_SIZE) : 1;
       nextBtn.disabled = state.loading || state.page >= maxPage;
     }
 
+    // results
     resultsEl.innerHTML = "";
     if (!state.items || state.items.length === 0) {
       const empty = document.createElement("div");
@@ -422,19 +417,19 @@
         s.textContent = t?.name ?? "";
         tagsEl.appendChild(s);
       }
-        div.addEventListener("click", async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const text = it.content ?? "";
-            if (!text) return;
 
-            // 先写入弹幕输入框（你的进阶需求）
-            const ok = setDanmuText(text);
-            if (ok) toast("已写入弹幕输入框 ✍️");
+      // 单击：写入弹幕输入框 + 复制
+      div.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = it.content ?? "";
+        if (!text) return;
 
-            // 仍保留复制（如果你想取消复制，我也可以改成可配置）
-            await copyText(text);
-        });
+        const ok = setDanmuText(text);
+        if (ok) toast("已写入弹幕输入框 ✍️");
+        await copyText(text);
+      });
+
       resultsEl.appendChild(div);
     }
   }
@@ -501,20 +496,7 @@
     }
   }
 
-  // ---- random one ----
-  async function ensureAllTotal() {
-    // 5分钟内复用 total，减少请求
-    const now = Date.now();
-    if (state.allTotal > 0 && now - state.allTotalFetchedAt < 5 * 60 * 1000) return state.allTotal;
-
-    const url = `${API_BASE}/memes?sort=${encodeURIComponent(SORT)}&page=1&page_size=${PAGE_SIZE}`;
-    const data = await gmGetJson(url);
-    const total = typeof data?.total === "number" ? data.total : 0;
-    state.allTotal = total;
-    state.allTotalFetchedAt = now;
-    return total;
-  }
-
+  // 随机专用API
   async function fetchRandomOne(panel) {
     if (state.loading) return;
 
@@ -523,34 +505,17 @@
     render(panel);
 
     try {
-      const total = await ensureAllTotal();
-      if (!total || total <= 0) {
-        toast("total=0，无法随机");
+      const data = await gmGetJson(`${API_BASE}/memes/random`);
+      if (!data || !data.content) {
+        toast("随机返回为空");
         state.items = [];
         return;
       }
+      state.items = [data];
 
-      const idx = Math.floor(Math.random() * total); // [0,total-1]
-      const page = Math.floor(idx / PAGE_SIZE) + 1;
-      const offset = idx % PAGE_SIZE;
-
-      const url = `${API_BASE}/memes?sort=${encodeURIComponent(SORT)}&page=${page}&page_size=${PAGE_SIZE}`;
-      const data = await gmGetJson(url);
-      const items = Array.isArray(data?.items) ? data.items : [];
-      const picked = items[offset] || items[Math.floor(Math.random() * items.length)];
-
-      if (!picked || !picked.content) {
-        toast("随机结果为空，重试");
-        state.items = [];
-        return;
-      }
-
-      state.items = [picked];
-      state.total = total;
-      state.page = page;
-
-      await copyText(picked.content);
-      toast(`随机命中：#${picked.id ?? "?"}（第${page}页）✅`);
+      // 保持与你之前行为一致：随机后自动复制（不自动写入输入框，避免打断）
+      await copyText(data.content);
+      toast(`随机命中：#${data.id ?? "?"} ✅`);
     } catch (e) {
       state.lastError = e?.message ? e.message : String(e);
       state.items = [];
@@ -562,7 +527,7 @@
   }
 
   // -------------------------
-  // Portal + Positioning（默认上侧 + 可拖拽偏移）
+  // Portal + Positioning（上侧 + 拖拽偏移）
   // -------------------------
   function findChatInputBox() {
     return document.querySelector(".chat-input.border-box");
@@ -590,7 +555,7 @@
     const h = panel.getBoundingClientRect().height || 260;
 
     let left = rect.left + offset.dx;
-    let top = rect.top - h - 8 + offset.dy; // 上侧
+    let top = rect.top - h - 8 + offset.dy;
 
     left = clamp(left, 8, window.innerWidth - width - 8);
     top = clamp(top, 8, window.innerHeight - h - 8);
@@ -669,7 +634,6 @@
     const segBtns = Array.from(panel.querySelectorAll(".hzm-meme-seg button"));
     const rowKeyword = panel.querySelector("#hzm-meme-row-keyword");
     const rowTag = panel.querySelector("#hzm-meme-row-tag");
-    const rowRandom = panel.querySelector("#hzm-meme-row-random");
 
     function setMode(mode) {
       if (state.mode === mode) return;
@@ -684,12 +648,10 @@
 
       rowKeyword.style.display = mode === "keyword" ? "" : "none";
       rowTag.style.display = mode === "tag" ? "" : "none";
-      rowRandom.style.display = mode === "random" ? "" : "none";
 
       render(panel);
       updatePanelPositionRaf();
 
-      // 选中随机模式后：自动加载随机一条
       if (mode === "random") {
         fetchRandomOne(panel).catch(() => {});
       }
@@ -753,19 +715,14 @@
       fetchMemes(panel).catch(() => {});
     });
 
-    // random again
-    const randomAgainBtn = panel.querySelector("#hzm-meme-random-again");
-    randomAgainBtn.addEventListener("click", () => {
-      fetchRandomOne(panel).catch(() => {});
-    });
-
-    // paging（随机模式下 render() 已禁用按钮，但这里也做保护）
+    // footer buttons
     panel.querySelector("#hzm-meme-prev").addEventListener("click", () => {
       if (state.mode === "random") return;
       if (state.page <= 1) return;
       state.page -= 1;
       fetchMemes(panel).catch(() => {});
     });
+
     panel.querySelector("#hzm-meme-next").addEventListener("click", () => {
       if (state.mode === "random") return;
       const maxPage = state.total ? Math.ceil(state.total / PAGE_SIZE) : state.page + 1;
@@ -774,7 +731,11 @@
       fetchMemes(panel).catch(() => {});
     });
 
-    // 默认模式：关键词
+    panel.querySelector("#hzm-meme-random-again").addEventListener("click", () => {
+      if (state.mode !== "random") return;
+      fetchRandomOne(panel).catch(() => {});
+    });
+
     setMode("keyword");
   }
 
